@@ -1,6 +1,6 @@
 # 个人知识库系统（多轮强化版）
 
-基于 **LangChain + Chroma + FastAPI** 的个人 RAG 知识库后端：上传 PDF/TXT，向量化入库，支持多轮对话问答，并返回引用来源。
+基于 **LangChain + Chroma + FastAPI / Streamlit** 的个人 RAG 知识库：上传 PDF/TXT，向量化入库，支持多轮对话问答（API 或 Streamlit UI），并返回引用来源。
 
 ## 功能特性
 
@@ -9,6 +9,8 @@
 - 智谱 `embedding-3` 做向量化，DeepSeek 做生成
 - 多轮对话：根据历史将追问重写为独立问题再检索
 - 回答附带来源文件名、页码与内容片段
+- Streamlit UI：`@st.cache_resource` 缓存 Heavy 对象，LLM 真流式打字机输出
+- FastAPI 与 Streamlit 可并存；日常请避免两边同时写入同一 `chroma_db/`
 
 ## 技术栈
 
@@ -20,6 +22,7 @@
 | PyMuPDF | PDF 解析 |
 | 智谱 AI | Embeddings（`embedding-3`） |
 | DeepSeek | LLM（`deepseek-v4-flash`） |
+| Streamlit | 本地 Web UI（直连 KnowledgeBaseService） |
 
 ## 项目结构
 
@@ -31,6 +34,8 @@ personal-kb/
 │   └── config.py      # 环境变量与路径配置
 ├── uploads/           # 上传文件（运行时生成，已 gitignore）
 ├── chroma_db/         # 向量库（运行时生成，已 gitignore）
+├── streamlit_app.py   # Streamlit UI（直连服务层）
+├── docs/              # 设计与实现计划
 ├── requirements.txt
 ├── .env               # 本地密钥（勿提交）
 └── README.md
@@ -73,6 +78,16 @@ python -m src.main
 
 默认监听：`http://127.0.0.1:8000`  
 交互文档：`http://127.0.0.1:8000/docs`
+
+### 5. 启动 Streamlit UI（推荐日常使用）
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Streamlit 进程内直连 `KnowledgeBaseService`，**不需要**先启动 FastAPI。
+
+若同时需要 HTTP API，可另开终端运行 `python -m src.main`。请勿让 Streamlit 与 FastAPI 同时对同一 `chroma_db/` 做写入（上传/向量化），以免索引冲突。
 
 ## API 说明
 
@@ -149,3 +164,4 @@ python -m src.main
 - `.env`、`uploads/`、`chroma_db/` 已在 `.gitignore` 中，请勿提交密钥与本地数据
 - 空文件、非 UTF-8 TXT、无法解析的 PDF 会返回 422
 - 知识库中无相关内容时，模型应明确说明「知识库中未找到相关内容」
+- Streamlit 与 FastAPI 可并存，但请勿同时对同一 `chroma_db/` 做写入（上传/向量化），以免索引冲突
