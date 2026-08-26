@@ -1,5 +1,5 @@
 import os
-import fitz # PyMuPDF 库
+import fitz  # PyMuPDF 库
 from typing import List, Dict
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
@@ -63,11 +63,13 @@ class KnowledgeBaseService:
             "如果文档中没有提及，请明确回答'知识库中未找到相关内容'，切勿编造。\n\n"
             "[参考文档]:\n{context}\n"
         )
-        self.qa_prompt = ChatPromptTemplate.from_messages([
-            ("system", qa_prompt_str),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{question}")
-        ])
+        self.qa_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", qa_prompt_str),
+                MessagesPlaceholder(variable_name="chat_history"),
+                ("human", "{question}"),
+            ]
+        )
         self.qa_chain = self.qa_prompt | self.llm | StrOutputParser()
 
     def parse_file(self, file_path: str, filename: str) -> List[Document]:
@@ -77,7 +79,7 @@ class KnowledgeBaseService:
 
         if file_size == 0:
             raise ValueError("上传的文件为空文件 (0字节)")
-        
+
         if filename.endswith(".pdf"):
             try:
                 doc = fitz.open(file_path)
@@ -91,13 +93,13 @@ class KnowledgeBaseService:
                         documents.append(
                             Document(
                                 page_content=text,
-                                metadata={"filename": filename, "page": page_num + 1}
+                                metadata={"filename": filename, "page": page_num + 1},
                             )
                         )
                 doc.close()
             except Exception as e:
                 raise ValueError(f"解析 PDF 文件时发生错误: {e}")
-        
+
         elif filename.endswith(".txt"):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -106,15 +108,14 @@ class KnowledgeBaseService:
                     raise ValueError("TXT 文件内容为空")
                 documents.append(
                     Document(
-                        page_content=content,
-                        metadata={"filename": filename, "page": 1}
+                        page_content=content, metadata={"filename": filename, "page": 1}
                     )
                 )
             except UnicodeDecodeError:
                 raise ValueError("TXT 文件不是 UTF-8 编码格式")
         else:
             raise ValueError("不支持的文件类型，仅支持 PDF 和 TXT 文件")
-        
+
         if not documents:
             raise ValueError("未能从文件中提取出任何有效文件")
 
@@ -129,7 +130,9 @@ class KnowledgeBaseService:
         self.vectorstore.add_documents(chunks)
         return len(chunks)
 
-    def _convert_chat_history(self, history_list: List[Dict[str, str]]) -> List[BaseMessage]:
+    def _convert_chat_history(
+        self, history_list: List[Dict[str, str]]
+    ) -> List[BaseMessage]:
         """将对话历史转换为 LangChain Message 对象列表"""
         messages = []
         for item in history_list:
@@ -141,16 +144,17 @@ class KnowledgeBaseService:
                 messages.append(AIMessage(content=content))
         return messages
 
-    def query_multi_turn(self, question: str, history: List[Dict[str, str]], top_k: int = 3) -> Dict:
+    def query_multi_turn(
+        self, question: str, history: List[Dict[str, str]], top_k: int = 3
+    ) -> Dict:
         """检索并生成回答与出处引用"""
         chat_history = self._convert_chat_history(history)
 
         # 如果有历史对话，先将提问重构成独立的 Query
         if chat_history:
-            standalone_question = self.rephrase_chain.invoke({
-                "chat_history": chat_history,
-                "question": question
-            })
+            standalone_question = self.rephrase_chain.invoke(
+                {"chat_history": chat_history, "question": question}
+            )
         else:
             standalone_question = question
 
@@ -167,11 +171,9 @@ class KnowledgeBaseService:
         )
 
         # 生成多轮回答
-        answer = self.qa_chain.invoke({
-            "context": context_str,
-            "chat_history": chat_history,
-            "question": question
-        })
+        answer = self.qa_chain.invoke(
+            {"context": context_str, "chat_history": chat_history, "question": question}
+        )
 
         # 构建来源引用列表
         sources = []
@@ -182,11 +184,13 @@ class KnowledgeBaseService:
             key = f"{fname}-{page}"
             if key not in seen:
                 seen.add(key)
-                sources.append({
-                    "filename": fname,
-                    "page": page,
-                    "content_snippet": doc.page_content[:120] + "..."
-                })
+                sources.append(
+                    {
+                        "filename": fname,
+                        "page": page,
+                        "content_snippet": doc.page_content[:120] + "...",
+                    }
+                )
 
         return {
             "question": question,
@@ -194,6 +198,24 @@ class KnowledgeBaseService:
             "answer": answer,
             "sources": sources,
         }
+
+    def list_documents(self) -> List[Dict]:
+        """获取已有向量数据库的统计信息"""
+        results = self.vectorstore.get(include=["metadatas"])
+
+        file_stats = {}
+        if results and results.get("metadatas"):
+            for meta in results["metadatas"]:
+                if not meta:
+                    continue
+                fname = meta.get("filename", "未命名文件")
+                file_stats[fname] = file_stats.get(fname, 0) + 1
+
+        return [
+            {"filename": fname, "chunk_count": count}
+            for fname, count in file_stats.items()
+        ]
+
 
 # 实例化全局服务单例
 kb_service = KnowledgeBaseService()
