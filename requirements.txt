@@ -9,3 +9,4 @@ pymupdf==1.28.0
 python-dotenv==1.2.2
 python-multipart==0.0.32
 uvicorn==0.51.0
+streamlit==1.62.0
