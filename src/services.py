@@ -1,6 +1,6 @@
 import os
 import fitz  # PyMuPDF 库
-from typing import List, Dict
+from typing import List, Dict, Iterator, Tuple
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -144,13 +144,12 @@ class KnowledgeBaseService:
                 messages.append(AIMessage(content=content))
         return messages
 
-    def query_multi_turn(
+    def _prepare_rag_context(
         self, question: str, history: List[Dict[str, str]], top_k: int = 3
     ) -> Dict:
-        """检索并生成回答与出处引用"""
+        """重写追问、检索文档并构建 context / sources（同步）"""
         chat_history = self._convert_chat_history(history)
 
-        # 如果有历史对话，先将提问重构成独立的 Query
         if chat_history:
             standalone_question = self.rephrase_chain.invoke(
                 {"chat_history": chat_history, "question": question}
@@ -158,11 +157,9 @@ class KnowledgeBaseService:
         else:
             standalone_question = question
 
-        # 向量检索
         retrieval = self.vectorstore.as_retriever(search_kwargs={"k": top_k})
         retrieved_docs = retrieval.invoke(standalone_question)
 
-        # 拼接参考上下文
         context_str = "\n\n".join(
             [
                 f"出处 {doc.metadata['filename']} 第 {doc.metadata['page']} 页: {doc.page_content}"
@@ -170,12 +167,6 @@ class KnowledgeBaseService:
             ]
         )
 
-        # 生成多轮回答
-        answer = self.qa_chain.invoke(
-            {"context": context_str, "chat_history": chat_history, "question": question}
-        )
-
-        # 构建来源引用列表
         sources = []
         seen = set()
         for doc in retrieved_docs:
@@ -193,10 +184,45 @@ class KnowledgeBaseService:
                 )
 
         return {
-            "question": question,
+            "chat_history": chat_history,
             "standalone_question": standalone_question,
-            "answer": answer,
+            "context_str": context_str,
             "sources": sources,
+            "retrieved_docs": retrieved_docs,
+        }
+
+    def query_multi_turn_stream(
+        self, question: str, history: List[Dict[str, str]], top_k: int = 3
+    ) -> Tuple[Iterator[str], List[Dict]]:
+        """检索同步完成后，流式 yield LLM token；同时返回 sources。"""
+        prepared = self._prepare_rag_context(question, history, top_k)
+
+        token_iter = self.qa_chain.stream(
+            {
+                "context": prepared["context_str"],
+                "chat_history": prepared["chat_history"],
+                "question": question,
+            }
+        )
+        return token_iter, prepared["sources"]
+
+    def query_multi_turn(
+        self, question: str, history: List[Dict[str, str]], top_k: int = 3
+    ) -> Dict:
+        """检索并生成回答与出处引用"""
+        prepared = self._prepare_rag_context(question, history, top_k)
+        answer = self.qa_chain.invoke(
+            {
+                "context": prepared["context_str"],
+                "chat_history": prepared["chat_history"],
+                "question": question,
+            }
+        )
+        return {
+            "question": question,
+            "standalone_question": prepared["standalone_question"],
+            "answer": answer,
+            "sources": prepared["sources"],
         }
 
     def list_documents(self) -> List[Dict]:
