@@ -26,7 +26,7 @@ class KnowledgeBaseService:
             model=settings.LLM_MODEL,
             api_key=settings.DEEPSEEK_API_KEY,
             base_url=settings.DEEPSEEK_BASE_URL,
-            temperature=0.0,
+            temperature=0.3
         )
 
         # 初始化 Chroma 数据库
