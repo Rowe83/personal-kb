@@ -4,20 +4,19 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import List
 
-from src.config import settings
-from src.services import kb_service
+from src.config_loader import load_app_settings
+from src.service_factory import get_kb_service
+from src.settings_store import ConfigurationError
 
 app = FastAPI(
-    title="个人知识库系统（多轮强化版） API",
-    description="基于 LangChain + Chroma + FastAPI 的个人 RAG 知识库后端服务",
-    version="2.0.0",
+    title="个人知识库系统 API",
+    description="基于 LangChain + Chroma 的开源本地 RAG 知识库",
+    version="2.1.0",
 )
 
-# 限制最大文件上传为 20MB
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
 
-# Pydantic 模型定义
 class ChatMessage(BaseModel):
     role: str = Field(..., description="消息角色: user 或 assistant")
     content: str = Field(..., description="消息内容")
@@ -42,16 +41,38 @@ class QueryResponse(BaseModel):
     sources: List[SourceItem]
 
 
-# 接口路由定义
+def _config_error_to_http(exc: ConfigurationError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=str(exc),
+    )
+
+
+@app.get("/health")
+async def health():
+    settings = load_app_settings()
+    return {
+        "status": "ok",
+        "embedding_configured": settings.is_embedding_configured(),
+        "llm_configured": settings.is_llm_configured(),
+    }
+
+
 @app.post("/upload", summary="上传文档构建索引")
 async def upload_document(file: UploadFile = File(...)):
+    settings = load_app_settings()
+    if not settings.is_embedding_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="请先配置 Embedding API Key（config.local.yaml 或环境变量）",
+        )
+
     if not (file.filename.endswith(".pdf") or file.filename.endswith(".txt")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="目前仅支持上传 .pdf 和 .txt 文件",
         )
 
-    # 校验文件大小
     file.file.seek(0, os.SEEK_END)
     file_size = file.file.tell()
     file.file.seek(0)
@@ -62,9 +83,8 @@ async def upload_document(file: UploadFile = File(...)):
             detail=f"文件大小超过限制 (最大 {MAX_FILE_SIZE // (1024 * 1024):.2f}MB)。单文件上限为 20MB",
         )
 
-    file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+    file_path = os.path.join(settings.upload_dir, file.filename)
 
-    # 写入到本地
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -74,17 +94,28 @@ async def upload_document(file: UploadFile = File(...)):
             detail=f"写入文件失败: {str(e)}",
         )
 
-    # 解析与向量化
     try:
-        chunks_count = kb_service.add_documents(file_path, file.filename)
+        kb_service = get_kb_service(force_reload=True)
+        result = kb_service.add_documents(file_path, file.filename, overwrite=True)
+        message = "文档解析并向量化入库成功"
+        if result.get("overwritten"):
+            message = (
+                f"已覆盖同名文档：删除旧分块 {result['deleted_chunks']} 个，"
+                f"新建 {result['chunks_created']} 个"
+            )
         return {
             "status": "success",
             "filename": file.filename,
-            "chunks_created": chunks_count,
-            "message": "文档解析并向量化入库成功",
+            "chunks_created": result["chunks_created"],
+            "overwritten": result.get("overwritten", False),
+            "deleted_chunks": result.get("deleted_chunks", 0),
+            "message": message,
         }
+    except ConfigurationError as exc:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise _config_error_to_http(exc) from exc
     except ValueError as ve:
-        # 清理非法或损坏的本地残余文件
         if os.path.exists(file_path):
             os.remove(file_path)
         raise HTTPException(
@@ -102,17 +133,27 @@ async def upload_document(file: UploadFile = File(...)):
 
 @app.post("/query", response_model=QueryResponse, summary="检索知识库并生成回答")
 async def query_knowledge_base(request: MultiTurnQueryRequest):
+    settings = load_app_settings()
+    if not settings.is_llm_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="请先配置 LLM API Key（config.local.yaml 或环境变量）",
+        )
+
     if not request.question.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="提问不能为空"
         )
 
     try:
+        kb_service = get_kb_service(force_reload=True)
         history_dicts = [msg.model_dump() for msg in request.history]
         result = kb_service.query_multi_turn(
             question=request.question, history=history_dicts, top_k=request.top_k
         )
         return result
+    except ConfigurationError as exc:
+        raise _config_error_to_http(exc) from exc
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -122,6 +163,7 @@ async def query_knowledge_base(request: MultiTurnQueryRequest):
 
 @app.get("/documents", summary="获取已上传文档列表")
 async def get_documents():
+    kb_service = get_kb_service()
     docs = kb_service.list_documents()
     return {"total_documents": len(docs), "documents": docs}
 

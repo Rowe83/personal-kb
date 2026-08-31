@@ -1,167 +1,137 @@
-# 个人知识库系统（多轮强化版）
+# Personal KB — 开源本地个人知识库
 
-基于 **LangChain + Chroma + FastAPI / Streamlit** 的个人 RAG 知识库：上传 PDF/TXT，向量化入库，支持多轮对话问答（API 或 Streamlit UI），并返回引用来源。
+基于 **LangChain + Chroma + Streamlit / FastAPI** 的本地 RAG 知识库：文档上传、向量化、多轮对话问答，数据与索引均保存在本机。
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)]()
 
 ## 功能特性
 
-- 文档上传与解析（PDF / TXT，单文件上限 20MB）
-- 文本切片后写入 Chroma 向量库
-- 智谱 `embedding-3` 做向量化，DeepSeek 做生成
-- 多轮对话：根据历史将追问重写为独立问题再检索
-- 回答附带来源文件名、页码与内容片段
-- Streamlit UI：`@st.cache_resource` 缓存 Heavy 对象，LLM 真流式打字机输出
-- FastAPI 与 Streamlit 可并存；日常请避免两边同时写入同一 `chroma_db/`
-
-## 技术栈
-
-| 组件 | 说明 |
-|------|------|
-| FastAPI / Uvicorn | HTTP API |
-| LangChain | RAG 编排、多轮重写与问答 |
-| Chroma | 本地向量存储 |
-| PyMuPDF | PDF 解析 |
-| 智谱 AI | Embeddings（`embedding-3`） |
-| DeepSeek | LLM（`deepseek-v4-flash`） |
-| Streamlit | 本地 Web UI（直连 KnowledgeBaseService） |
-
-## 项目结构
-
-```
-personal-kb/
-├── src/
-│   ├── main.py        # FastAPI 路由与请求/响应模型
-│   ├── services.py    # 解析、向量化、多轮检索与生成
-│   └── config.py      # 环境变量与路径配置
-├── uploads/           # 上传文件（运行时生成，已 gitignore）
-├── chroma_db/         # 向量库（运行时生成，已 gitignore）
-├── streamlit_app.py   # Streamlit UI（直连服务层）
-├── docs/              # 设计与实现计划
-├── requirements.txt
-├── .env               # 本地密钥（勿提交）
-└── README.md
-```
+- **本地部署**：向量库与上传文件存于本机，适合个人/团队内网使用
+- **UI 配置 API Key**：Streamlit 设置页 + 供应商模板（DeepSeek / 智谱 / OpenAI 兼容）
+- **共享配置**：`config.local.yaml` 同时供 Streamlit 与 FastAPI 使用
+- **测试连接**：保存前可分别测试 Embedding / LLM
+- **多轮对话**：追问重写 + 流式打字机输出 + 引用来源
+- **Hybrid 检索**：向量相似度 + BM25（RRF 融合），提升接口号 / 文件名命中
+- **同名覆盖提示**：重复上传同名文件前会明确提示并删除旧向量
+- **目录类问题**：如「一共几个文档」直接列出清单，不走纯 RAG
+- **文档格式**：PDF / TXT（P1 将支持 MD、Excel、PDF OCR、批量导入）
 
 ## 快速开始
 
-### 1. 环境要求
-
-- Python 3.11+
-- 智谱 AI API Key、DeepSeek API Key
-
-### 2. 安装依赖
+### 1. 克隆与安装
 
 ```bash
+git clone https://github.com/Rowe83/personal-kb.git
+cd personal-kb
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. 配置环境变量
+### 2. 配置（二选一）
 
-在项目根目录创建 `.env`：
-
-```env
-ANONYMIZED_TELEMETRY=False
-
-# DeepSeek（LLM）
-DEEPSEEK_API_KEY=your_deepseek_api_key
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-
-# 智谱 AI（Embeddings）
-ZHIPUAI_API_KEY=your_zhipu_api_key
-ZHIPU_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
-```
-
-### 4. 启动服务
-
-```bash
-python -m src.main
-```
-
-默认监听：`http://127.0.0.1:8000`  
-交互文档：`http://127.0.0.1:8000/docs`
-
-### 5. 启动 Streamlit UI（推荐日常使用）
+**方式 A — UI 配置（推荐）**
 
 ```bash
 streamlit run streamlit_app.py
 ```
 
-Streamlit 进程内直连 `KnowledgeBaseService`，**不需要**先启动 FastAPI。
+打开左侧 **⚙️ 设置** 页 → 选择供应商模板 → 填写 API Key → **测试连接** → **保存配置**。
 
-若同时需要 HTTP API，可另开终端运行 `python -m src.main`。请勿让 Streamlit 与 FastAPI 同时对同一 `chroma_db/` 做写入（上传/向量化），以免索引冲突。
+**方式 B — 复制示例文件**
 
-## API 说明
-
-### `POST /upload`
-
-上传文档并构建索引。
-
-- 表单字段：`file`（multipart/form-data）
-- 支持：`.pdf`、`.txt`
-- 限制：单文件 ≤ 20MB
-
-成功响应示例：
-
-```json
-{
-  "status": "success",
-  "filename": "demo.pdf",
-  "chunks_created": 12,
-  "message": "文档解析并向量化入库成功"
-}
+```bash
+cp config.local.yaml.example config.local.yaml
+# 编辑 config.local.yaml 填入 api_key
 ```
 
-### `POST /query`
+也支持传统 `.env`（见 `config.local.yaml.example` 内字段说明）；YAML 优先。
 
-检索知识库并生成回答（支持多轮）。
+### 3. 使用
 
-请求体：
-
-```json
-{
-  "question": "它支持哪些文件格式？",
-  "history": [
-    { "role": "user", "content": "这个知识库是做什么的？" },
-    { "role": "assistant", "content": "这是一个个人 RAG 知识库后端服务。" }
-  ],
-  "top_k": 3
-}
-```
-
-| 字段 | 类型 | 说明 |
+| 入口 | 命令 | 说明 |
 |------|------|------|
-| `question` | string | 当前问题（必填） |
-| `history` | array | 对话历史，`role` 为 `user` / `assistant` |
-| `top_k` | int | 检索条数，默认 3，范围 1–10 |
+| **Streamlit UI** | `streamlit run streamlit_app.py` | 推荐：对话 / 知识库 / 设置 |
+| **FastAPI** | `python -m src.main` | HTTP API，文档见 `/docs` |
 
-响应体：
+### 4. 页面导航
 
-```json
-{
-  "question": "它支持哪些文件格式？",
-  "standalone_question": "个人知识库支持哪些文件格式？",
-  "answer": "...",
-  "sources": [
-    {
-      "filename": "demo.pdf",
-      "page": 1,
-      "content_snippet": "..."
-    }
-  ]
-}
+- **首页** — 使用说明与路线图
+- **💬 对话** — 基于知识库的流式问答
+- **📚 知识库** — 上传 PDF/TXT、查看已入库文档
+- **⚙️ 设置** — Embedding / LLM API 配置
+
+## 配置说明
+
+配置文件：`config.local.yaml`（已 gitignore，不会提交）
+
+```yaml
+embedding:
+  provider: zhipu          # zhipu | openai_compatible | custom
+  api_key: "your-key"
+  base_url: "https://open.bigmodel.cn/api/paas/v4/"
+  model: "embedding-3"
+
+llm:
+  provider: deepseek
+  api_key: "your-key"
+  base_url: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
+  temperature: 0.3
 ```
 
-`standalone_question` 为结合历史重写后的独立检索问题；无历史时与 `question` 相同。
+**OpenAI 兼容**：Ollama、One API 等填写对应 Base URL 即可。
 
-## 多轮问答流程
+## 项目结构
 
-1. 若存在 `history`，先用 LLM 将当前追问重写为独立问题
-2. 用 `standalone_question` 在 Chroma 中做相似度检索
-3. 将检索上下文与对话历史一并交给 LLM 生成回答
-4. 去重后返回引用来源
+```
+personal-kb/
+├── streamlit_app.py          # Streamlit 首页
+├── pages/                    # 多页 UI（对话 / 知识库 / 设置）
+├── ui/shared.py              # UI 公共组件
+├── src/
+│   ├── services.py           # RAG 核心服务
+│   ├── config_loader.py      # 配置加载
+│   ├── settings_store.py     # YAML 读写
+│   ├── provider_templates.py # 供应商模板
+│   ├── connection_test.py    # API 连通性测试
+│   └── main.py               # FastAPI
+├── config.local.yaml.example
+├── uploads/                  # 上传文件（gitignore）
+└── chroma_db/                # 向量库（gitignore）
+```
+
+## API 概览
+
+- `GET /health` — 配置状态
+- `POST /upload` — 上传文档
+- `POST /query` — 多轮问答
+- `GET /documents` — 文档列表
+
+未配置 API Key 时，`/upload` 与 `/query` 返回 `503` 及明确提示。
+
+## 路线图
+
+| 阶段 | 内容 |
+|------|------|
+| **P0 ✅** | UI 配置 API Key、本地 YAML、测试连接 |
+| **P1** | MD / Excel、PDF OCR、批量导入 |
+| **P2** | 现代化 UI、导入进度 |
+| **P3** | Hybrid 检索增强、Docker 一键部署 |
+
+## 开发
+
+```bash
+python -m pytest tests/ -v
+```
 
 ## 注意事项
 
-- `.env`、`uploads/`、`chroma_db/` 已在 `.gitignore` 中，请勿提交密钥与本地数据
-- 空文件、非 UTF-8 TXT、无法解析的 PDF 会返回 422
-- 知识库中无相关内容时，模型应明确说明「知识库中未找到相关内容」
-- Streamlit 与 FastAPI 可并存，但请勿同时对同一 `chroma_db/` 做写入（上传/向量化），以免索引冲突
+- `config.local.yaml`、`.env`、`uploads/`、`chroma_db/` 请勿提交
+- Streamlit 与 FastAPI 请勿同时对同一 `chroma_db/` 写入
+- 首次使用 Cross-Encoder 重排（后续版本）需下载本地模型
+
+## License
+
+MIT

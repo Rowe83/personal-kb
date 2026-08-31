@@ -2,6 +2,11 @@
 .env
 .env.*
 !.env.example
+config.local.yaml
+
+# Local design docs (not for repo)
+docs/superpowers/
+.superpowers/
 
 # Python
 __pycache__/
@@ -45,6 +50,7 @@ chroma_db/
 .DS_Store
 
 # Testing / coverage
+tests/
 .pytest_cache/
 .coverage
 htmlcov/

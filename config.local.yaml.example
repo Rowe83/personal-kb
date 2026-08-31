@@ -1,0 +1,26 @@
+version: 1
+
+embedding:
+  provider: zhipu
+  api_key: ""
+  base_url: "https://open.bigmodel.cn/api/paas/v4/"
+  model: "embedding-3"
+
+llm:
+  provider: deepseek
+  api_key: ""
+  base_url: "https://api.deepseek.com/v1"
+  model: "deepseek-chat"
+  temperature: 0.3
+
+paths:
+  upload_dir: "./uploads"
+  chroma_db_dir: "./chroma_db"
+
+retrieval:
+  multi_query_n: 3
+  hybrid_fetch_k: 10
+  rrf_k: 60
+  rerank_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  enable_multi_query: true
+  enable_rerank: true
