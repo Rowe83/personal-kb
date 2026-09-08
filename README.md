@@ -15,7 +15,7 @@
 - **Hybrid 检索**：向量相似度 + BM25（RRF 融合），提升接口号 / 文件名命中
 - **同名覆盖提示**：重复上传同名文件前会明确提示并删除旧向量
 - **目录类问题**：如「一共几个文档」直接列出清单，不走纯 RAG
-- **文档格式**：PDF / TXT（P1 将支持 MD、Excel、PDF OCR、批量导入）
+- **文档格式**：PDF / TXT / MD / XLSX；Streamlit 支持批量上传与同名覆盖确认
 
 ## 快速开始
 
@@ -59,7 +59,7 @@ cp config.local.yaml.example config.local.yaml
 
 - **首页** — 使用说明与路线图
 - **💬 对话** — 基于知识库的流式问答
-- **📚 知识库** — 上传 PDF/TXT、查看已入库文档
+- **📚 知识库** — 上传 PDF/TXT/MD/XLSX（支持批量）、查看已入库文档
 - **⚙️ 设置** — Embedding / LLM API 配置
 
 ## 配置说明
@@ -116,7 +116,7 @@ personal-kb/
 | 阶段 | 内容 |
 |------|------|
 | **P0 ✅** | UI 配置 API Key、本地 YAML、测试连接 |
-| **P1** | MD / Excel、PDF OCR、批量导入 |
+| **P1 ✅** | MD / Excel、批量导入（PDF OCR 后续） |
 | **P2** | 现代化 UI、导入进度 |
 | **P3** | Hybrid 检索增强、Docker 一键部署 |
 

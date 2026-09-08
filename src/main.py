@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from typing import List
 
 from src.config_loader import load_app_settings
+from src.ingest.parsers import SUPPORTED_EXTENSIONS, normalize_ext
 from src.service_factory import get_kb_service
 from src.settings_store import ConfigurationError
 
@@ -67,10 +68,11 @@ async def upload_document(file: UploadFile = File(...)):
             detail="请先配置 Embedding API Key（config.local.yaml 或环境变量）",
         )
 
-    if not (file.filename.endswith(".pdf") or file.filename.endswith(".txt")):
+    ext = normalize_ext(file.filename or "")
+    if ext not in SUPPORTED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="目前仅支持上传 .pdf 和 .txt 文件",
+            detail="目前仅支持上传 .pdf / .txt / .md / .xlsx 文件",
         )
 
     file.file.seek(0, os.SEEK_END)

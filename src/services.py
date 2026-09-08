@@ -1,5 +1,3 @@
-import os
-import fitz  # PyMuPDF 库
 from typing import List, Dict, Iterator, Tuple, Optional, Any
 
 import chromadb
@@ -148,57 +146,14 @@ class KnowledgeBaseService:
         return self._qa_chain
 
     def parse_file(self, file_path: str, filename: str) -> List[Document]:
-        documents = []
-        file_size = os.path.getsize(file_path)
-
-        if file_size == 0:
-            raise ValueError("上传的文件为空文件 (0字节)")
-
-        if filename.endswith(".pdf"):
-            try:
-                doc = fitz.open(file_path)
-                if doc.page_count == 0:
-                    raise ValueError("PDF 文件未包含任何页面")
-
-                for page_num in range(len(doc)):
-                    page = doc[page_num]
-                    text = page.get_text().strip()
-                    if text:
-                        documents.append(
-                            Document(
-                                page_content=text,
-                                metadata={"filename": filename, "page": page_num + 1},
-                            )
-                        )
-                doc.close()
-            except Exception as e:
-                raise ValueError(f"解析 PDF 文件时发生错误: {e}")
-
-        elif filename.endswith(".txt"):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                if not content:
-                    raise ValueError("TXT 文件内容为空")
-                documents.append(
-                    Document(
-                        page_content=content, metadata={"filename": filename, "page": 1}
-                    )
-                )
-            except UnicodeDecodeError:
-                raise ValueError("TXT 文件不是 UTF-8 编码格式")
-        else:
-            raise ValueError("不支持的文件类型，仅支持 PDF 和 TXT 文件")
-
-        if not documents:
-            raise ValueError("未能从文件中提取出任何有效文件")
-
-        return documents
+        from src.ingest.parsers import parse_document
+        return parse_document(file_path, filename)
 
     def _chunk_documents(self, raw_docs: List[Document], filename: str) -> List[Document]:
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         if (
             len(raw_docs) == 1
-            and filename.endswith(".txt")
+            and ext in {"txt", "md"}
             and len(raw_docs[0].page_content) <= SHORT_TXT_CHARS
         ):
             chunks = raw_docs
