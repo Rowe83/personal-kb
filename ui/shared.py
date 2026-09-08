@@ -6,41 +6,77 @@ from src.settings_store import ConfigurationError
 
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 
-CUSTOM_CSS = """
+KB_ACCENT = "#1D4E89"
+
+CUSTOM_CSS = f"""
 <style>
-    .stApp {
-        background-color: #f8f9fa;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #e9ecef;
-    }
-    .stChatMessage {
-        border-radius: 12px;
-        padding: 12px;
-        margin-bottom: 10px;
-    }
-    .source-box {
-        background-color: #f1f3f5;
-        border-left: 4px solid #4c6ef5;
-        padding: 8px 12px;
-        margin-top: 8px;
-        border-radius: 4px;
-        font-size: 0.85rem;
-        color: #495057;
-    }
-    .stButton>button {
-        border-radius: 8px;
-        font-weight: 500;
-    }
-    .config-banner {
-        background: #fff3cd;
-        border: 1px solid #ffecb5;
+    :root {{
+        --kb-bg: #f4f6f8;
+        --kb-surface: #ffffff;
+        --kb-text: #1a1d21;
+        --kb-muted: #5c6570;
+        --kb-accent: {KB_ACCENT};
+        --kb-border: #e2e6ea;
+    }}
+    .stApp {{ background-color: var(--kb-bg); color: var(--kb-text); }}
+    [data-testid="stSidebar"] {{
+        background-color: var(--kb-surface);
+        border-right: 1px solid var(--kb-border);
+    }}
+    .kb-brand {{
+        padding: 0.25rem 0 1rem 0;
+        border-bottom: 1px solid var(--kb-border);
+        margin-bottom: 1rem;
+    }}
+    .kb-brand-title {{
+        font-size: 1.15rem; font-weight: 700; color: var(--kb-text); margin: 0;
+    }}
+    .kb-brand-sub {{
+        font-size: 0.8rem; color: var(--kb-muted); margin: 0.25rem 0 0 0;
+    }}
+    .stChatMessage {{ border-radius: 12px; padding: 12px; margin-bottom: 10px; }}
+    /* 用户消息：醒目底色，便于与助手区分 */
+    div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"])
+    [data-testid="stChatMessageContent"],
+    [data-testid="stChatMessageContent"][aria-label="Chat message from user"] {{
+        background-color: #d6e6f7 !important;
+        border: 1px solid #9bb8d9 !important;
+        border-radius: 12px !important;
+        padding: 0.65rem 0.9rem !important;
+        box-shadow: 0 1px 2px rgba(29, 78, 137, 0.08);
+    }}
+    .source-box {{
+        background-color: #eef2f6;
+        border-left: 4px solid var(--kb-accent);
+        padding: 8px 12px; margin-top: 8px; border-radius: 4px;
+        font-size: 0.85rem; color: var(--kb-muted);
+    }}
+    .stButton>button {{
+        border-radius: 8px; font-weight: 500;
+        border-color: var(--kb-accent);
+    }}
+    .stButton>button[kind="primary"],
+    .stButton>button[data-testid="baseButton-primary"] {{
+        background-color: var(--kb-accent);
+        border-color: var(--kb-accent);
+    }}
+    .config-banner {{
+        background: #fff8e6;
+        border: 1px solid #f0e0a8;
         border-radius: 8px;
         padding: 12px 16px;
         margin-bottom: 16px;
         color: #664d03;
-    }
+    }}
+    .kb-stat {{
+        background: var(--kb-surface);
+        border: 1px solid var(--kb-border);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 8px;
+    }}
+    .kb-stat-label {{ color: var(--kb-muted); font-size: 0.85rem; }}
+    .kb-stat-value {{ color: var(--kb-text); font-size: 1.25rem; font-weight: 600; }}
 </style>
 """
 
@@ -56,6 +92,17 @@ def apply_page_config():
 
 def apply_css():
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+def render_sidebar_brand():
+    with st.sidebar:
+        st.markdown(
+            "<div class='kb-brand'>"
+            "<p class='kb-brand-title'>Personal KB</p>"
+            "<p class='kb-brand-sub'>本地开源个人知识库</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 
 @st.cache_resource

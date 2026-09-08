@@ -5,10 +5,11 @@ from src.config_loader import load_app_settings
 from src.connection_test import test_embedding_connection, test_llm_connection
 from src.provider_templates import EMBEDDING_TEMPLATES, LLM_TEMPLATES, get_template
 from src.settings_store import load_local_settings, save_local_settings
-from ui.shared import apply_css, apply_page_config, invalidate_service_cache
+from ui.shared import apply_css, apply_page_config, invalidate_service_cache, render_sidebar_brand
 
 apply_page_config()
 apply_css()
+render_sidebar_brand()
 
 st.title("⚙️ 模型设置")
 st.caption("配置向量模型与大模型 API，保存至本地 `config.local.yaml`（不会提交到 Git）")

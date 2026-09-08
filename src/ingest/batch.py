@@ -21,13 +21,19 @@ def run_batch_ingest(
     overwrite_names: Set[str],
     save_file: Callable[[Dict], str],
     ingest_fn: Callable[..., Dict],
+    on_progress: Optional[Callable[[int, int, str, str], None]] = None,
 ) -> List[BatchItemResult]:
     results: List[BatchItemResult] = []
-    for item in items:
+    total = len(items)
+    for i, item in enumerate(items, start=1):
         filename = item["filename"]
         if filename in existing_filenames and filename not in overwrite_names:
+            if on_progress:
+                on_progress(i, total, filename, "skipped")
             results.append(BatchItemResult(filename=filename, status="skipped"))
             continue
+        if on_progress:
+            on_progress(i, total, filename, "start")
         file_path = None
         try:
             file_path = save_file(item)
@@ -47,4 +53,6 @@ def run_batch_ingest(
             results.append(
                 BatchItemResult(filename=filename, status="failed", error=str(exc))
             )
+        if on_progress:
+            on_progress(i, total, filename, "done")
     return results

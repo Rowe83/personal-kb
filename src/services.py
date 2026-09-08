@@ -1,3 +1,4 @@
+import os
 from typing import List, Dict, Iterator, Tuple, Optional, Any
 
 import chromadb
@@ -199,12 +200,21 @@ class KnowledgeBaseService:
             docs.append(Document(page_content=content, metadata=meta))
         return docs
 
-    def delete_by_filename(self, filename: str) -> int:
+    def delete_by_filename(self, filename: str, remove_upload: bool = True) -> int:
         old_ids = self.find_chunk_ids_by_filename(filename)
-        if not old_ids:
-            return 0
-        self.vectorstore.delete(ids=old_ids)
-        return len(old_ids)
+        deleted = 0
+        if old_ids:
+            self.vectorstore.delete(ids=old_ids)
+            deleted = len(old_ids)
+        if remove_upload:
+            upload_path = os.path.join(self.settings.upload_dir, filename)
+            if os.path.exists(upload_path):
+                os.remove(upload_path)
+        if deleted and self._bm25_index is not None:
+            self._bm25_index.rebuild_from_vectorstore(self.vectorstore)
+            if self._pipeline is not None:
+                self._pipeline.bm25_index = self._bm25_index
+        return deleted
 
     def dedupe_vectorstore(self) -> int:
         try:
@@ -241,7 +251,7 @@ class KnowledgeBaseService:
                 raise ValueError(
                     f"文档「{filename}」已存在。请确认覆盖后重新上传。"
                 )
-            deleted_chunks = self.delete_by_filename(filename)
+            deleted_chunks = self.delete_by_filename(filename, remove_upload=False)
             overwritten = True
 
         raw_docs = self.parse_file(file_path, filename)

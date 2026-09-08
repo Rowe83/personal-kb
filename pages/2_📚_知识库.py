@@ -13,10 +13,12 @@ from ui.shared import (
     cached_kb_service,
     handle_config_error,
     render_config_banner,
+    render_sidebar_brand,
 )
 
 apply_page_config()
 apply_css()
+render_sidebar_brand()
 
 settings = load_app_settings()
 kb_service = cached_kb_service()
@@ -78,6 +80,9 @@ render_config_banner()
 
 if "batch_results" in st.session_state:
     _render_batch_summary(st.session_state.pop("batch_results"))
+
+if "delete_flash" in st.session_state:
+    st.success(st.session_state.pop("delete_flash"))
 
 uploaded_files = st.file_uploader(
     "选择 PDF / TXT / MD / XLSX 文件（可多选）",
@@ -159,22 +164,30 @@ if uploaded_files:
             overwrite_names = {
                 name for name in existing_names if st.session_state.get(_overwrite_key(name), True)
             }
-            with st.spinner("批量入库处理中..."):
-                try:
-                    results = run_batch_ingest(
-                        items=valid_items,
-                        existing_filenames=set(existing_docs),
-                        overwrite_names=overwrite_names,
-                        save_file=lambda item: _save_upload_item(item, settings.upload_dir),
-                        ingest_fn=kb_service.add_documents,
-                    )
-                    if any(r.status in ("created", "overwritten") for r in results):
-                        st.session_state["batch_results"] = results
-                        st.rerun()
-                    else:
-                        _render_batch_summary(results)
-                except Exception as exc:
-                    handle_config_error(exc)
+            progress_bar = st.progress(0.0)
+            status_box = st.empty()
+
+            def on_progress(index, total, filename, phase):
+                progress_bar.progress(index / total)
+                label = {"start": "处理中", "skipped": "已跳过", "done": "完成"}.get(phase, phase)
+                status_box.caption(f"{label} {index}/{total}：{filename}")
+
+            try:
+                results = run_batch_ingest(
+                    items=valid_items,
+                    existing_filenames=set(existing_docs),
+                    overwrite_names=overwrite_names,
+                    save_file=lambda item: _save_upload_item(item, settings.upload_dir),
+                    ingest_fn=kb_service.add_documents,
+                    on_progress=on_progress,
+                )
+                if any(r.status in ("created", "overwritten") for r in results):
+                    st.session_state["batch_results"] = results
+                    st.rerun()
+                else:
+                    _render_batch_summary(results)
+            except Exception as exc:
+                handle_config_error(exc)
 
 st.markdown("---")
 st.subheader("📑 已入库文档")
@@ -185,9 +198,33 @@ try:
         st.info("暂无已入库文档，请先上传。")
     else:
         for doc in docs_data:
-            st.text(f"📄 {doc['filename']} ({doc['chunk_count']} 块)")
+            name = doc["filename"]
+            col_a, col_b = st.columns([4, 1])
+            with col_a:
+                st.text(f"📄 {name} ({doc['chunk_count']} 块)")
+            with col_b:
+                confirm_key = f"confirm_delete_{name}"
+                if st.session_state.get(confirm_key):
+                    if st.button("确认删除", key=f"do_del_{name}", type="primary"):
+                        try:
+                            n = kb_service.delete_by_filename(name)
+                            st.session_state.pop(confirm_key, None)
+                            st.session_state["delete_flash"] = f"已删除「{name}」（{n} 个分块）"
+                            st.rerun()
+                        except Exception as exc:
+                            handle_config_error(exc)
+                    if st.button("取消", key=f"cancel_del_{name}"):
+                        st.session_state.pop(confirm_key, None)
+                        st.rerun()
+                else:
+                    if st.button("删除", key=f"del_{name}"):
+                        st.session_state[confirm_key] = True
+                        st.rerun()
 except Exception as exc:
     handle_config_error(exc)
 
 st.markdown("---")
-st.caption("检索已启用 Hybrid（向量 + BM25）。P2 将支持 UI 视觉优化与 PDF OCR。")
+st.caption(
+    "批量入库时显示逐文件进度；文档列表支持二次确认删除。"
+    "检索已启用 Hybrid（向量 + BM25）。"
+)

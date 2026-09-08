@@ -1,4 +1,3 @@
-import os
 import streamlit as st
 
 from src.config_loader import load_app_settings
@@ -8,11 +7,13 @@ from ui.shared import (
     cached_kb_service,
     handle_config_error,
     render_config_banner,
+    render_sidebar_brand,
     render_sources,
 )
 
 apply_page_config()
 apply_css()
+render_sidebar_brand()
 
 settings = load_app_settings()
 kb_service = cached_kb_service()
@@ -27,7 +28,7 @@ if "messages" not in st.session_state:
     ]
 
 st.title("💬 智能问答")
-st.caption("基于 LangChain + Chroma 的本地 RAG 知识库")
+st.caption("本地 RAG 问答 · 流式输出与引用来源")
 render_config_banner()
 
 with st.sidebar:
