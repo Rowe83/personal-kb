@@ -11,6 +11,31 @@ from src.retrieval.bm25_index import content_hash
 
 _API_LINE = re.compile(r"(?:^|\s)(\d{6,})\s*[-–—]\s*(.+?)\s*$", re.MULTILINE)
 _QUERY_NOISE = re.compile(r"[有多少个接口文档？?的\s]+")
+_QUERY_FILLER = {
+    "简述",
+    "介绍",
+    "说明",
+    "总结",
+    "查询",
+    "请问",
+    "帮我",
+    "帮忙",
+    "一下",
+    "什么",
+    "怎么",
+    "如何",
+    "请",
+    "讲讲",
+    "说说",
+    "看看",
+    "描述",
+}
+
+
+def _token_set(text: str) -> set[str]:
+    import jieba
+
+    return {t.strip() for t in jieba.lcut(text or "") if len(t.strip()) >= 2}
 
 
 def extract_filename_hint(question: str, known_filenames: List[str]) -> Optional[str]:
@@ -30,6 +55,31 @@ def extract_filename_hint(question: str, known_filenames: List[str]) -> Optional
         for token in re.findall(r"[\u4e00-\u9fffA-Za-z0-9]{2,}", q):
             if len(token) >= 4 and token in stem:
                 return fn
+
+    # Fuzzy: jieba token overlap against filename stems (e.g. 股票标签 → 搜索股票标签逻辑.md)
+    q_tokens = _token_set(q) - _QUERY_FILLER
+    if len(q_tokens) < 2:
+        return None
+    best_fn: Optional[str] = None
+    best_score = 0.0
+    for fn in known_filenames:
+        stem = fn.rsplit(".", 1)[0]
+        stem_tokens = _token_set(stem)
+        if len(stem_tokens) < 2:
+            continue
+        overlap = q_tokens & stem_tokens
+        if len(overlap) < 2:
+            continue
+        score = len(overlap) / len(stem_tokens)
+        if score > best_score or (
+            score == best_score
+            and best_fn is not None
+            and len(stem) > len(best_fn.rsplit(".", 1)[0])
+        ):
+            best_score = score
+            best_fn = fn
+    if best_fn is not None and best_score >= 0.5:
+        return best_fn
     return None
 
 

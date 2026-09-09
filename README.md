@@ -12,7 +12,7 @@
 - **共享配置**：`config.local.yaml` 同时供 Streamlit 与 FastAPI 使用
 - **测试连接**：保存前可分别测试 Embedding / LLM
 - **多轮对话**：追问重写 + 流式打字机输出 + 引用来源
-- **Hybrid 检索**：向量相似度 + BM25（RRF 融合），提升接口号 / 文件名命中
+- **Hybrid 检索**：向量 + BM25（RRF）；可选 Multi-Query 改写与本地 Cross-Encoder 重排（`config.local.yaml` / 环境变量开关）
 - **同名覆盖提示**：重复上传同名文件前会明确提示并删除旧向量
 - **目录类问题**：如「一共几个文档」直接列出清单，不走纯 RAG
 - **文档格式**：PDF / TXT / MD / XLSX；Streamlit 支持批量上传与同名覆盖确认
@@ -121,7 +121,8 @@ personal-kb/
 | **P0 ✅** | UI 配置 API Key、本地 YAML、测试连接 |
 | **P1 ✅** | MD / Excel、批量导入（PDF OCR 后续） |
 | **P2 ✅** | 清爽文档风 UI、逐文件导入进度、文档删除 |
-| **P3** | Hybrid 检索增强、Docker 一键部署 |
+| **P3 ✅** | Multi-Query + Cross-Encoder 检索增强（Docker 延后） |
+| **后续** | Docker 一键部署、PDF OCR 等 |
 
 ## 开发
 
@@ -133,7 +134,7 @@ python -m pytest tests/ -v
 
 - `config.local.yaml`、`.env`、`uploads/`、`chroma_db/` 请勿提交
 - Streamlit 与 FastAPI 请勿同时对同一 `chroma_db/` 写入
-- 首次使用 Cross-Encoder 重排（后续版本）需下载本地模型
+- 首次启用 Rerank 会下载本地 MiniLM 模型
 
 ## License
 

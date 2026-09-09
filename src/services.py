@@ -25,6 +25,7 @@ from src.retrieval.intent import (
     is_interface_count_question,
 )
 from src.retrieval.pipeline import RetrievalPipeline
+from src.retrieval.rerank import rerank
 from src.settings_store import ConfigurationError, ensure_data_dirs
 
 SHORT_TXT_CHARS = 800
@@ -125,15 +126,23 @@ class KnowledgeBaseService:
     @property
     def retrieval_pipeline(self) -> RetrievalPipeline:
         if self._pipeline is None:
+            r = self.settings.retrieval
             self._pipeline = RetrievalPipeline(
                 vectorstore=self.vectorstore,
                 bm25_index=self.bm25_index,
-                hybrid_fetch_k=self.settings.retrieval.hybrid_fetch_k,
-                rrf_k=self.settings.retrieval.rrf_k,
+                hybrid_fetch_k=r.hybrid_fetch_k,
+                rrf_k=r.rrf_k,
+                llm=self._llm,
+                multi_query_n=r.multi_query_n,
+                enable_multi_query=r.enable_multi_query,
+                enable_rerank=r.enable_rerank,
+                rerank_model=r.rerank_model,
             )
             if not self._deduped:
                 self.dedupe_vectorstore()
                 self._deduped = True
+        elif self._llm is not None:
+            self._pipeline.llm = self._llm
         return self._pipeline
 
     @property
@@ -199,6 +208,22 @@ class KnowledgeBaseService:
                 meta["_id"] = ids[i]
             docs.append(Document(page_content=content, metadata=meta))
         return docs
+
+    def _retrieve_by_filename(
+        self, filename: str, standalone_question: str, top_k: int
+    ) -> List[Document]:
+        file_docs = dedupe_documents(self.get_documents_by_filename(filename))
+        if not file_docs:
+            return []
+        pipe = self.retrieval_pipeline
+        if pipe.enable_rerank:
+            return rerank(
+                standalone_question,
+                file_docs,
+                top_k,
+                model_name=pipe.rerank_model,
+            )
+        return file_docs[:top_k]
 
     def delete_by_filename(self, filename: str, remove_upload: bool = True) -> int:
         old_ids = self.find_chunk_ids_by_filename(filename)
@@ -389,6 +414,16 @@ class KnowledgeBaseService:
                 top_k=top_k,
                 filename_hint=filename_hint,
             )
+            # Hybrid may miss the hinted file (filter falls back to unrelated docs).
+            # When the question clearly targets a known filename, load that file's chunks.
+            if filename_hint and not any(
+                d.metadata.get("filename") == filename_hint for d in retrieved_docs
+            ):
+                file_docs = self._retrieve_by_filename(
+                    filename_hint, standalone_question, top_k
+                )
+                if file_docs:
+                    retrieved_docs = file_docs
 
         context_str = "\n\n".join(
             [
